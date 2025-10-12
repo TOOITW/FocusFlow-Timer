@@ -23,8 +23,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // Note: suppressHydrationWarning is added to avoid dev overlay when browser extensions inject attributes
+    // into <html>/<body> before React hydrates (e.g., wotdisconnected="true").
+    <html lang="en" suppressHydrationWarning>
       <body
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
