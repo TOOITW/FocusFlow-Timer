@@ -1,56 +1,93 @@
-// ─────────────────────────────────────────────────────────────────
-// 1) 在所有 import 之前先 mock（關鍵）
-// Mock sound：可切換 tick 開關；Alert/Notify 可觀察次數
-// ─────────────────────────────────────────────────────────────────
-let tickEnabled = false;
-const playAlertMock = jest.fn(async () => {});
-const playTickMock = jest.fn(async () => {});
-const setVolumeMock = jest.fn();
-const enableTickMock = jest.fn((v: boolean) => {
-  tickEnabled = v;
+// ───────────────────────────────────────────────────────────────
+// 1) 在所有 import 之前先定義「全域可用的 mock」
+//    （避免 jest.mock 被 hoist 時抓不到變數的初始化）
+// ───────────────────────────────────────────────────────────────
+// @ts-ignore
+(globalThis as any).__tickEnabled = false;
+// @ts-ignore
+(globalThis as any).__playAlertMock = jest.fn(async () => {});
+// @ts-ignore
+(globalThis as any).__playTickMock = jest.fn(async () => {});
+// @ts-ignore
+(globalThis as any).__setVolumeMock = jest.fn();
+// @ts-ignore
+(globalThis as any).__enableTickMock = jest.fn((v: boolean) => {
+  (globalThis as any).__tickEnabled = v;
 });
 
-jest.mock("@/services/sound", () => ({
-  sound: {
-    playAlert: () => playAlertMock(),
-    playTick: () => (tickEnabled ? playTickMock() : Promise.resolve()),
-    setVolume: (v: number) => setVolumeMock(v),
-    enableTick: (v: boolean) => enableTickMock(v),
-  },
-}));
-
-// Mock notifier：可設定授權狀態
-let permission: "default" | "denied" | "granted" = "default";
-const ensurePermissionMock = jest.fn(async () => permission);
-const notifyMock = jest.fn(
+// @ts-ignore
+(globalThis as any).__permission = "default" as
+  | "default"
+  | "denied"
+  | "granted";
+// @ts-ignore
+(globalThis as any).__ensurePermissionMock = jest.fn(
+  async () => (globalThis as any).__permission
+);
+// @ts-ignore
+(globalThis as any).__notifyMock = jest.fn(
   async (_opts: { title: string; body?: string }) => {}
 );
 
-jest.mock("@/services/notifier", () => ({
-  notifier: {
-    ensurePermission: () => ensurePermissionMock(),
-    notify: (opts: { title: string; body?: string }) => notifyMock(opts),
+// ───────────────────────────────────────────────────────────────
+// 2) mock 工廠只「代理」到全域 mock，不直接引用區域變數
+// ───────────────────────────────────────────────────────────────
+jest.mock("@/services/sound", () => ({
+  sound: {
+    playAlert: (...args: any[]) => (globalThis as any).__playAlertMock(...args),
+    playTick: () =>
+      (globalThis as any).__tickEnabled
+        ? (globalThis as any).__playTickMock()
+        : Promise.resolve(),
+    setVolume: (v: number) => (globalThis as any).__setVolumeMock(v),
+    enableTick: (v: boolean) => (globalThis as any).__enableTickMock(v),
   },
 }));
 
-// ─────────────────────────────────────────────────────────────────
-// 2) 現在才 import（import 時已經載入上面的 mock）
-// ─────────────────────────────────────────────────────────────────
+jest.mock("@/services/notifier", () => ({
+  notifier: {
+    ensurePermission: () => (globalThis as any).__ensurePermissionMock(),
+    notify: (opts: { title: string; body?: string }) =>
+      (globalThis as any).__notifyMock(opts),
+  },
+}));
+
+// ───────────────────────────────────────────────────────────────
+// 3) 現在才 import（import 時就會吃到上面的 mock）
+// ───────────────────────────────────────────────────────────────
 import { renderHook, act } from "@testing-library/react";
 import { usePomodoro } from "@/hooks/usePomodoro";
 import { sound } from "@/services/sound";
 
+// 4) 在測試區塊裡，拿到可斷言的 mock 實體
+const playAlertMock = (globalThis as any).__playAlertMock as jest.Mock;
+const playTickMock = (globalThis as any).__playTickMock as jest.Mock;
+const setVolumeMock = (globalThis as any).__setVolumeMock as jest.Mock;
+const enableTickMock = (globalThis as any).__enableTickMock as jest.Mock;
+const ensurePermissionMock = (globalThis as any)
+  .__ensurePermissionMock as jest.Mock;
+const notifyMock = (globalThis as any).__notifyMock as jest.Mock;
+
+// 幫 permission 做個易讀別名（就是改全域那個值）
+let permission = (globalThis as any).__permission as
+  | "default"
+  | "denied"
+  | "granted";
+
 describe("FR-004/005/009/010 回饋與通知", () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    tickEnabled = false;
+
+    (globalThis as any).__tickEnabled = false;
+    (globalThis as any).__permission = "default";
+    permission = (globalThis as any).__permission;
+
     playAlertMock.mockClear();
     playTickMock.mockClear();
     notifyMock.mockClear();
     ensurePermissionMock.mockClear();
     setVolumeMock.mockClear();
     enableTickMock.mockClear();
-    permission = "default";
   });
 
   afterEach(() => {
@@ -101,7 +138,7 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     expect(playAlertMock).toHaveBeenCalledTimes(1);
   });
 
-  it("開啟滴答且 isActive 時逐秒觸發；暫停不觸發", () => {
+  it("開啟滴答且 isActive 時逐秒觸發;暫停不觸發", () => {
     const { result } = renderHook(() => usePomodoro());
 
     // 開啟滴答
@@ -129,7 +166,7 @@ describe("FR-004/005/009/010 回饋與通知", () => {
   });
 
   it("通知：拒絕或未授權時不拋錯、不發通知", () => {
-    permission = "denied";
+    (globalThis as any).__permission = "denied";
 
     const { result } = renderHook(() => usePomodoro());
     act(() => {
@@ -140,16 +177,18 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     act(() => {
       jest.advanceTimersByTime(total * 1000);
     });
+
     act(() => {
-      jest.advanceTimersByTime(1);
+      jest.runAllTimers();
     });
 
     expect(ensurePermissionMock).toHaveBeenCalled();
     expect(notifyMock).not.toHaveBeenCalled();
   });
 
-  it("通知：授權時在歸零時發出一次通知", () => {
-    permission = "granted";
+  // 👇 1. 將測試函式標記為 async
+  it("通知：授權時在歸零時發出一次通知", async () => {
+    (globalThis as any).__permission = "granted";
 
     const { result } = renderHook(() => usePomodoro());
     act(() => {
@@ -160,8 +199,10 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     act(() => {
       jest.advanceTimersByTime(total * 1000);
     });
-    act(() => {
-      jest.advanceTimersByTime(1);
+
+    // 👇 2. 將 runAllTimers 包在一個 async 的 act 中，並用 await 等待它完成
+    await act(async () => {
+        jest.runAllTimers();
     });
 
     expect(ensurePermissionMock).toHaveBeenCalled();
