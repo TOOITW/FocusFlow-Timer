@@ -134,17 +134,6 @@ export const usePomodoro = () => {
     };
   }, []);
 
-  // Unmount 時確保清理任何掛起的計時器
-  useEffect(() => {
-    return () => {
-      clearIntervalIfAny();
-      if (autoSwitchTimeoutRef.current != null) {
-        clearTimeout(autoSwitchTimeoutRef.current);
-        autoSwitchTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
   const start = useCallback(() => {
     // 啟動時計算截止時間，用於後續校正
     endTimestampRef.current = now() + timeLeft * 1000;

@@ -6,9 +6,7 @@ describe("FR-003 番茄鐘週期管理", () => {
     jest.useFakeTimers();
   });
   afterEach(() => {
-    act(() => {
-      jest.runOnlyPendingTimers();
-    });
+    jest.runOnlyPendingTimers();
     jest.useRealTimers();
   });
 
