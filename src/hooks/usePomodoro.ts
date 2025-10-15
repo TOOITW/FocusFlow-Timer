@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { now } from "../services/clock";
+import { sound } from "@/services/sound";
+import { notifier } from "@/services/notifier";
 
 export type TimerMode = "focus" | "shortBreak" | "longBreak";
 
@@ -142,6 +144,106 @@ export const usePomodoro = () => {
         clearTimeout(autoSwitchTimeoutRef.current);
         autoSwitchTimeoutRef.current = null;
       }
+    };
+  }, []);
+
+  // 動態標題（FR-004）
+  useEffect(() => {
+    const mm = Math.floor(timeLeft / 60)
+      .toString()
+      .padStart(2, "0");
+    const ss = (timeLeft % 60).toString().padStart(2, "0");
+    const modeLabel =
+      mode === "focus"
+        ? "Focus"
+        : mode === "shortBreak"
+          ? "Short Break"
+          : "Long Break";
+    if (typeof document !== "undefined") {
+      document.title = `${mm}:${ss} - ${modeLabel}`;
+    }
+  }, [timeLeft, mode]);
+
+  // 每秒滴答（預設關；由 sound.enableTick 控制）（FR-005）
+  const prevTimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isActive) {
+      prevTimeRef.current = timeLeft;
+      return;
+    }
+    const prev = prevTimeRef.current;
+    if (prev != null) {
+      const diff = prev - timeLeft;
+      if (diff === 1) {
+        void sound.playTick();
+      }
+    }
+    prevTimeRef.current = timeLeft;
+  }, [timeLeft, isActive]);
+
+  useEffect(() => {
+    if (isActive && timeLeft > 0) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft((prevTime) => {
+          if (prevTime <= 1) {
+            setIsActive(false);
+            // 到 0 時觸發提示音與通知（FR-005/FR-009）
+            void sound.playAlert();
+            void notifier.ensurePermission().then((p) => {
+              if (p === "granted") {
+                const body =
+                  modeRef.current === "focus"
+                    ? "Focus session ended. Time for a break!"
+                    : "Break finished. Back to focus!";
+                void notifier.notify({ title: "FocusFlow Timer", body });
+              }
+            });
+            scheduleAutoSwitch();
+            endTimestampRef.current = null;
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+    } else {
+      clearIntervalIfAny();
+    }
+
+    return () => {
+      clearIntervalIfAny();
+    };
+  }, [isActive, timeLeft]);
+
+  // 背景/分頁切換/喚醒後校正（FR-008）
+  useEffect(() => {
+    const recalibrate = () => {
+      if (!isActiveRef.current || endTimestampRef.current == null) return;
+      const msLeft = endTimestampRef.current - now();
+      const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
+      setTimeLeft(secLeft);
+      if (secLeft === 0) {
+        setIsActive(false);
+        // 到 0 時觸發提示音與通知（FR-005/FR-009）
+        void sound.playAlert();
+        void notifier.ensurePermission().then((p) => {
+          if (p === "granted") {
+            const body =
+              modeRef.current === "focus"
+                ? "Focus session ended. Time for a break!"
+                : "Break finished. Back to focus!";
+            void notifier.notify({ title: "FocusFlow Timer", body });
+          }
+        });
+        endTimestampRef.current = null;
+        scheduleAutoSwitch();
+      }
+    };
+
+    document.addEventListener("visibilitychange", recalibrate);
+    window.addEventListener("pageshow", recalibrate);
+    return () => {
+      document.removeEventListener("visibilitychange", recalibrate);
+      window.removeEventListener("pageshow", recalibrate);
     };
   }, []);
 
