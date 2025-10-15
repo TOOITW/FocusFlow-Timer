@@ -1,8 +1,7 @@
-import { renderHook, act } from "@testing-library/react";
-import { usePomodoro } from "@/hooks/usePomodoro";
-import { sound } from "@/services/sound";
-
+// ─────────────────────────────────────────────────────────────────
+// 1) 在所有 import 之前先 mock（關鍵）
 // Mock sound：可切換 tick 開關；Alert/Notify 可觀察次數
+// ─────────────────────────────────────────────────────────────────
 let tickEnabled = false;
 const playAlertMock = jest.fn(async () => {});
 const playTickMock = jest.fn(async () => {});
@@ -33,6 +32,13 @@ jest.mock("@/services/notifier", () => ({
     notify: (opts: { title: string; body?: string }) => notifyMock(opts),
   },
 }));
+
+// ─────────────────────────────────────────────────────────────────
+// 2) 現在才 import（import 時已經載入上面的 mock）
+// ─────────────────────────────────────────────────────────────────
+import { renderHook, act } from "@testing-library/react";
+import { usePomodoro } from "@/hooks/usePomodoro";
+import { sound } from "@/services/sound";
 
 describe("FR-004/005/009/010 回饋與通知", () => {
   beforeEach(() => {

@@ -26,6 +26,7 @@ export function createDefaultSound(): Sound {
     async playAlert() {
       if (!alertEl) return;
       try {
+        // jsdom 會對未實作的 API 噴錯，因此真實瀏覽器才會走到這段
         alertEl.pause();
         alertEl.currentTime = 0;
         alertEl.volume = volume;
@@ -63,6 +64,16 @@ export function createNoopSound(): Sound {
   };
 }
 
+// 在 JSDOM/Node-like（測試/SSR）環境下改用 no-op，避免觸發未實作的 play/pause
+function isJsDomLike(): boolean {
+  if (typeof navigator === "undefined" || typeof window === "undefined")
+    return true;
+  const ua = navigator.userAgent || "";
+  return /jsdom|node\.js/i.test(ua);
+}
+
 // 預設單例（可被 jest.mock 取代）
 export const sound: Sound =
-  typeof Audio !== "undefined" ? createDefaultSound() : createNoopSound();
+  typeof Audio !== "undefined" && !isJsDomLike()
+    ? createDefaultSound()
+    : createNoopSound();
