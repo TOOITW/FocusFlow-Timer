@@ -89,53 +89,6 @@ export const usePomodoro = () => {
     }, 0);
   };
 
-  // AC-1.1: Accurate countdown - decrements by 1 second every second
-  useEffect(() => {
-    if (isActive && timeLeft > 0) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft((prevTime) => {
-          if (prevTime <= 1) {
-            // AC-1.2: Time reaches zero, stop the timer
-            setIsActive(false);
-            // 歸零後排程自動切換（以 setTimeout(0)），避免破壞現有 AC-1.2 測試
-            scheduleAutoSwitch();
-            endTimestampRef.current = null;
-            return 0;
-          }
-          return prevTime - 1;
-        });
-      }, 1000);
-    } else {
-      clearIntervalIfAny();
-    }
-
-    return () => {
-      clearIntervalIfAny();
-    };
-  }, [isActive, timeLeft]);
-
-  // 背景/分頁切換/喚醒後校正（FR-008）
-  useEffect(() => {
-    const recalibrate = () => {
-      if (!isActiveRef.current || endTimestampRef.current == null) return;
-      const msLeft = endTimestampRef.current - now();
-      const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
-      setTimeLeft(secLeft);
-      if (secLeft === 0) {
-        setIsActive(false);
-        endTimestampRef.current = null;
-        scheduleAutoSwitch();
-      }
-    };
-
-    document.addEventListener("visibilitychange", recalibrate);
-    window.addEventListener("pageshow", recalibrate);
-    return () => {
-      document.removeEventListener("visibilitychange", recalibrate);
-      window.removeEventListener("pageshow", recalibrate);
-    };
-  }, []);
-
   // Unmount 時確保清理任何掛起的計時器
   useEffect(() => {
     return () => {
