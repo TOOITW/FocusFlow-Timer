@@ -1,13 +1,11 @@
 import { renderHook, act } from "@testing-library/react";
 import { usePomodoro } from "@/hooks/usePomodoro";
+import { sound } from "@/services/sound";
 
 // Mock sound：可切換 tick 開關；Alert/Notify 可觀察次數
 let tickEnabled = false;
 const playAlertMock = jest.fn(async () => {});
-const tickCounter = { count: 0 };
-const playTickWrapper = async () => {
-  if (tickEnabled) tickCounter.count += 1;
-};
+const playTickMock = jest.fn(async () => {});
 const setVolumeMock = jest.fn();
 const enableTickMock = jest.fn((v: boolean) => {
   tickEnabled = v;
@@ -16,7 +14,7 @@ const enableTickMock = jest.fn((v: boolean) => {
 jest.mock("@/services/sound", () => ({
   sound: {
     playAlert: () => playAlertMock(),
-    playTick: () => playTickWrapper(),
+    playTick: () => (tickEnabled ? playTickMock() : Promise.resolve()),
     setVolume: (v: number) => setVolumeMock(v),
     enableTick: (v: boolean) => enableTickMock(v),
   },
@@ -25,7 +23,9 @@ jest.mock("@/services/sound", () => ({
 // Mock notifier：可設定授權狀態
 let permission: "default" | "denied" | "granted" = "default";
 const ensurePermissionMock = jest.fn(async () => permission);
-const notifyMock = jest.fn(async () => {});
+const notifyMock = jest.fn(
+  async (_opts: { title: string; body?: string }) => {}
+);
 
 jest.mock("@/services/notifier", () => ({
   notifier: {
@@ -39,11 +39,11 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     jest.useFakeTimers();
     tickEnabled = false;
     playAlertMock.mockClear();
+    playTickMock.mockClear();
     notifyMock.mockClear();
     ensurePermissionMock.mockClear();
     setVolumeMock.mockClear();
     enableTickMock.mockClear();
-    tickCounter.count = 0;
     permission = "default";
   });
 
@@ -100,9 +100,7 @@ describe("FR-004/005/009/010 回饋與通知", () => {
 
     // 開啟滴答
     act(() => {
-      // 透過 service 切換偏好（hook 不暴露 API）
-      enableTickMock(true);
-      tickEnabled = true;
+      sound.enableTick(true);
     });
 
     act(() => {
@@ -112,7 +110,7 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     act(() => {
       jest.advanceTimersByTime(3000);
     });
-    expect(tickCounter.count).toBe(3);
+    expect(playTickMock).toHaveBeenCalledTimes(3);
 
     // 暫停後不再累計
     act(() => {
@@ -121,7 +119,7 @@ describe("FR-004/005/009/010 回饋與通知", () => {
     act(() => {
       jest.advanceTimersByTime(5000);
     });
-    expect(tickCounter.count).toBe(3);
+    expect(playTickMock).toHaveBeenCalledTimes(3);
   });
 
   it("通知：拒絕或未授權時不拋錯、不發通知", () => {
@@ -162,6 +160,9 @@ describe("FR-004/005/009/010 回饋與通知", () => {
 
     expect(ensurePermissionMock).toHaveBeenCalled();
     expect(notifyMock).toHaveBeenCalledTimes(1);
-    expect(notifyMock.mock.calls[0][0].title).toBe("FocusFlow Timer");
+    const [[notification]] = notifyMock.mock.calls as [
+      [{ title: string; body?: string }],
+    ];
+    expect(notification.title).toBe("FocusFlow Timer");
   });
 });
